@@ -1,12 +1,12 @@
 import re
 import random
-from functools import partial
 
+import graphviz
 import numpy as np
 import scipy as sp
 import sklearn
+from sklearn.tree import DecisionTreeClassifier, export_graphviz, plot_tree
 
-import lime_base
 import my_lime
 
 
@@ -22,15 +22,14 @@ class SplitedString(object):
         split_expression = r'\W+'
         splitter = re.compile(r'(%s)|$' % split_expression)
         self.word_list = [s for s in splitter.split(self.raw_string) if s]
-        """word_list  是一个list，保存分割后的word，包括标点和空格
-        """
+        # word_list  是一个list，保存分割后的word，包括标点和空格
 
         self.word_list_without_splitter = list(filter(None, re.split(split_expression, self.raw_string)))
         self.vocab = []
         self.position = []
-        """self.vocab 是单词表，nonredundant
-        self.position 保存vocab 中对应单词在word_list 的位置
-        """
+        # self.vocab 是单词表，nonredundant
+        # self.position 保存vocab 中对应单词在word_list 的位置
+
         for i, word in enumerate(self.word_list):
             if word in self.word_list_without_splitter:
                 if word not in self.vocab:
@@ -118,7 +117,7 @@ class TextExplainer(object):
 
     def __init__(self,
                  kernel_width=25,
-                 class_names=None,
+                 class_names=['negative', 'postive'],
                  feature_selection='auto',):
 
         def kernel(d):
@@ -128,34 +127,19 @@ class TextExplainer(object):
             return np.sqrt(np.exp(-(d ** 2) / kernel_width ** 2))
 
         self.kernel_fn = kernel
-
-
         self.class_names = class_names
         self.feature_selection = feature_selection
 
-    def explain_string_by_lime(self, raw_string, predictor, num_features=10, num_samples=5000):
-
-        self.splited_string = SplitedString(raw_string)
-        perturber = DataPerturber(self.splited_string, num_samples, predictor)
-        (neighbors, neighbor_labels, distance) = perturber.perturbe()
-
-        base = lime_base.LimeBase(self.kernel_fn)
-        (self.list, predict_score, local_predict) = base.explain_instance_with_data(neighbors, neighbor_labels,
-                                                                                    distance, label=1,
-                                                                                    num_features=num_features,
-                                                                                    feature_selection=self.feature_selection)
-
-        return
-
-
-
     def explain_string_by_mylime(self, raw_string, predictor, num_features=10, num_samples=5000):
+        """
+        using lime with a linear model to explain a text
+        """
         self.splited_string = SplitedString(raw_string)
         perturber = DataPerturber(self.splited_string, num_samples, predictor)
         (neighbors, neighbor_labels, distance) = perturber.perturbe()
 
         base = my_lime.MyLime(self.kernel_fn)
-        (self.list, predict_score, local_predict) = base.explain_instance_with_data(neighbors, neighbor_labels, distance, label=1, num_features=num_features,
+        (self.list, predict_score, local_predict) = base.explain_instance_linear(neighbors, neighbor_labels, distance, label=1, num_features=num_features,
                                    feature_selection=self.feature_selection)
 
         return
@@ -168,11 +152,46 @@ class TextExplainer(object):
             words.append(vocab[x[0]])
             coef.append(x[1])
 
-        output = sorted(zip(words, coef),
+        self.output = sorted(zip(words, coef),
                        key=lambda x: np.abs(x[1]), reverse=True)
 
-        print(output)
+        print(self.output)
         return
+
+    def explain_string_by_treelime(self, raw_string, predictor, num_features = 10, num_samples=5000):
+        """
+        using lime with decision tree to explain
+        """
+        self.num_features = num_features
+        self.splited_string = SplitedString(raw_string)
+        perturber = DataPerturber(self.splited_string, num_samples, predictor)
+        (neighbors, neighbor_labels, distance) = perturber.perturbe()
+
+        base = my_lime.MyLime(self.kernel_fn)
+
+        self.tree_model = base.explain_instance_tree(neighbors, neighbor_labels, distance)
+
+        return
+
+    def show_tree(self):
+        dot_data = export_graphviz(self.tree_model, out_file=None,
+                                    feature_names= self.splited_string.vocab,
+                                    class_names=self.class_names,
+                                    filled=True, impurity=False)
+        graph = graphviz.Source(dot_data, format="png")
+        graph.render('text/tree_model')
+
+        plot_tree(self.tree_model)
+
+        self.importances = sorted(zip(self.splited_string.vocab, self.tree_model.feature_importances_),
+                key=lambda x: np.abs(x[1]), reverse=True)
+        self.importances = self.importances[:self.num_features]
+
+        print(self.importances)
+
+        return
+
+
 
 
 

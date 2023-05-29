@@ -1,7 +1,7 @@
 import numpy as np
 import scipy as sp
 from sklearn.linear_model import Ridge, lars_path, ElasticNet, LinearRegression, Lasso
-from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import DecisionTreeClassifier, export_graphviz
 from sklearn.utils import check_random_state
 
 class MyLime(object):
@@ -124,11 +124,11 @@ class MyLime(object):
                                           num_features, n_method)
 
 
-    def explain_instance_with_data(self, neighbor_wordbags, neighbor_labels, distances, label = 1, num_features = 5, feature_selection='auto'):
+    def explain_instance_linear(self, neighbor_wordbags, neighbor_labels, distances, label = 1, num_features = 5, feature_selection='auto'):
         weights = self.kernel_fn(distances)
-        self.labels_column = neighbor_labels[:, label]
+        labels_column = neighbor_labels[:, label]
         used_features = self.feature_selection(neighbor_wordbags,
-                                               self.labels_column,
+                                               labels_column,
                                                weights,
                                                num_features,
                                                feature_selection)
@@ -140,13 +140,36 @@ class MyLime(object):
         # easy_model = DecisionTreeRegressor(random_state=self.random_state)
 
         easy_model.fit(neighbor_wordbags[:, used_features],
-                       self.labels_column, sample_weight=weights)
+                       labels_column, sample_weight=weights)
         prediction_score = easy_model.score(
             neighbor_wordbags[:, used_features],
-            self.labels_column, sample_weight=weights)
+            labels_column, sample_weight=weights)
 
         local_pred = easy_model.predict(neighbor_wordbags[0, used_features].reshape(1, -1))
 
         return (sorted(zip(used_features, easy_model.coef_),
                        key=lambda x: np.abs(x[1]), reverse=True),
                 prediction_score, local_pred)
+
+    def explain_instance_tree(self, neighbor_wordbags, neighbor_labels, distances):
+        """
+        explain a text with decision tree
+        """
+
+        weights = self.kernel_fn(distances)
+
+        self.binary_labels = []
+        for label in neighbor_labels:
+            self.binary_labels.append(1 if label[1] > label[0] else 0)
+
+        tree_model = DecisionTreeClassifier(random_state=0, max_depth=20)
+        tree_model.fit(neighbor_wordbags, self.binary_labels, sample_weight=weights)
+
+        return tree_model
+
+
+
+
+
+
+
