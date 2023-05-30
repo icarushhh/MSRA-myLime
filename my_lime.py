@@ -151,7 +151,7 @@ class MyLime(object):
                        key=lambda x: np.abs(x[1]), reverse=True),
                 prediction_score, local_pred)
 
-    def explain_instance_tree(self, neighbor_wordbags, neighbor_labels, distances):
+    def explain_instance_tree(self, neighbor_wordbags, neighbor_labels, distances, max_depth=5):
         """
         explain a text with decision tree
         """
@@ -162,7 +162,7 @@ class MyLime(object):
         for label in neighbor_labels:
             self.binary_labels.append(1 if label[1] > label[0] else 0)
 
-        tree_model = DecisionTreeClassifier(random_state=0, max_depth=20)
+        tree_model = DecisionTreeClassifier(random_state=0, max_depth=max_depth)
         tree_model.fit(neighbor_wordbags, self.binary_labels, sample_weight=weights)
 
         return tree_model

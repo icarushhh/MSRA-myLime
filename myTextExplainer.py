@@ -158,7 +158,7 @@ class TextExplainer(object):
         print(self.output)
         return
 
-    def explain_string_by_treelime(self, raw_string, predictor, num_features = 10, num_samples=5000):
+    def explain_string_by_treelime(self, raw_string, predictor, num_features = 10, num_samples=5000, max_depth=5):
         """
         using lime with decision tree to explain
         """
@@ -169,7 +169,7 @@ class TextExplainer(object):
 
         base = my_lime.MyLime(self.kernel_fn)
 
-        self.tree_model = base.explain_instance_tree(neighbors, neighbor_labels, distance)
+        self.tree_model = base.explain_instance_tree(neighbors, neighbor_labels, distance, max_depth)
 
         return
 
