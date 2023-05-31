@@ -27,11 +27,17 @@ PB20111718 朱仕哲
 - 基于Sentiment140数据集，对预训练语言模型BERT base进行fine-tune，然后使用LIME官方代码生成解释
 - 用自己实现的LIME生成该模型的解释，并给出生成解释的例子(case study)，与官方结果比较
 - 总结用LIME分析BERT你得到了什么insight，比如BERT是否用到正确的信息进行预测，可解释方法的优点或不足
-- 对BERT base或者LIME可能改进方法的思考，以及对未来可能研究方向的展望(可选)
+- 对BERT base或者LIME可能改进方法的思考，以及对未来可能研究方向的展望
+
+此外，我做的尝试和探索有：
+
+- 尝试使用SP-lime 来生成整个模型的解释
+
+- 尝试在自己实现的lime中使用不同的可解释模型，如其他线性模型和决策树模型
 
 
 
-## 2. 模型可解释研究相关文献调研
+## 2. 大模型可解释研究相关文献调研
 
 ### 2.1 LIME 方法
 
@@ -44,13 +50,11 @@ PB20111718 朱仕哲
   1. *trusting a prediction*, i.e. whether a user trusts an individual prediction sufficiently to take some action based on it
   2. *trusting a model*, i.e. whether the user trusts a model to behave in reasonable ways if deployed
 
-  对于这两个层次，作者分别提出了LIME 和 SP-LIME （submodule pick）两种方法来对模型进行解释：
+  对于这两个层次，作者分别提出了LIME 和 SP-LIME （submodule pick）两种方法来对模型进行解释*LIME：*
 
-  1. *LIME：*
+  LOCAL INTERPRETABLE MODEL-AGNOSTIC EXPLANATIONS，an algorithm that can explain the predictions of any classifier or regressor in a faithful way, by approximating it locally with an interpretable model.
 
-     LOCAL INTERPRETABLE MODEL-AGNOSTIC EXPLANATIONS，an algorithm that can explain the predictions of any classifier or regressor in a faithful way, by approximating it locally with an interpretable model.
-
-  2. *SP-LIME：*
+  1. *SP-LIME：*
 
      A method that selects a set of representative instances with explanations to address the “trusting the model” problem, via submodular optimization.
 
@@ -76,7 +80,7 @@ PB20111718 朱仕哲
 
   LIME算法的主要思想是：使用可解释特征训练一个可解释模型，在特定样本的局部线性邻域内拟合待解释模型。
 
-  <img src="MSRA大模型可解释研究 结题报告_images/image-20230530142319676.png" alt="image-20230530142319676" style="zoom:50%;" />
+  <img src="MSRA大模型可解释研究 结题报告_images/image-20230530142319676.png" alt="image-20230530142319676" style="zoom: 33%;" />
 
   算法的具体步骤如下：
 
@@ -92,7 +96,7 @@ PB20111718 朱仕哲
 *Explaining the Explainer: A First Theoretical Analysis of LIME*
 
 - **概述：**
-  - 文章对LIME算法进行了理论分析，推导了当被解释的函数是线性的时候，LIME生成的可解释模型的系数的闭式表达式。结果表明，这些系数与被解释函数的梯度成正比，说明LIME 确实发现了有意义的特征。
+  - 文章对LIME算法进行了理论分析，推导了当被解释的函数是线性的时候，LIME生成的可解释模型的系数的封闭表达式。结果表明，这些系数与被解释函数的梯度成正比，说明LIME 确实发现了有意义的特征。
   - 文章也揭示了LIME中参数选择不当可能导致LIME忽略重要特征的问题。
 
 
@@ -154,7 +158,7 @@ Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization
 
 
 
-### 3.1 fine-tune BERT base
+### 3.1 fine-tune BERT-base
 
 在这一小节，主要使用Sentiment140数据集一个子集（助教提供），对预训练语言模型bert_base_uncased进行fine-tune。以ipython notebook的形式在Colab上运行。这一节没有贴源码（过于冗长），源码上传在了github仓库，这里只做简单介绍。
 
@@ -191,7 +195,9 @@ Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization
   epochs = 4
   ```
 
-- **fine-tune 预训练模型：**每轮训练的信息如下
+- **fine-tune 预训练模型：**
+
+  每轮训练的信息如下
 
   <img src="MSRA大模型可解释研究 结题报告_images/image-20230529142725377.png" alt="image-20230529142725377" style="zoom: 50%;" />
 
@@ -240,12 +246,6 @@ import lime
 import torch
 import torch.nn.functional as F
 from lime.lime_text import LimeTextExplainer
-
-# from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
-# tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
-# model = AutoModelForSequenceClassification.from_pretrained("ProsusAI/finbert")
-# class_names = ['positive','negative', 'neutral']
 
 def predictor(texts):
   outputs = model(**tokenizer(texts, return_tensors="pt", padding=True))
@@ -318,9 +318,7 @@ exp.show_in_notebook(text=str_to_predict)
 >
 > <img src="MSRA大模型可解释研究 结题报告_images/image-20230529150757452.png" alt="image-20230529150757452" style="zoom:50%;" />
 
-在这一个case中，模型同样作出了和label一致的判断（positive），但是根据lime的解释，模型的判断依据并不是很可信。比如“cause”，“in”，“had”，“have”，“hrs”，“just”等没有明显感情倾向的word被用作判断依据，而“hard” 这个词应该对模型判断其为negative起促进作用，但模型对他的考虑权重并不大。
-
-当然也是因为这个句子中适合作为判断依据的词较少，故前十个feature中会有很多无关词。“in”，“had”，“have”，“hrs”，“just”等无关词的权重绝对值都排在后五位。
+在这一个case中，模型同样作出了和label一致的判断（positive），但是在lime的解释里出现了大量的无关词，如“cause”，“in”，“had”，“have”，“hrs”，“just”等没有明显感情倾向的词被用作判断依据。但是它们的出现并不能说BERT在这个case上的可解释性很差。原因是这些无关词的权重绝对值都较小，且这段text较短，其中可以用于判断的有效信息远少于参数中的10个，故导致BERT的解释中混入了这些无关词。
 
 **最后，我使用SP-lime试图对整个模型生成解释：**
 
@@ -342,15 +340,19 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
 在SP-lime的解释中，可以发现“cried”，“puked”是较好的判断依据，但“you”，“I”，“totally”和“until“则是不那么好的判断依据。说明我们fine-tune后的BERT模型能选择一些正确的且较为有效的判断依据，但也有很多依据是不合理的。
 
+另外，由于只能在大小为1000的数据集上运行，且特征数量设置为6，这些特征并不能很好地代表原模型的解释。
+
 
 
 ### 3.3 自己实现LIME并对模型生成解释
 
-在这一小节，主要根据LIME论文中介绍的实现原理和github官方的代码来实现一个自己的lime，并使用自己实现的lime对fine-tune后的BERT模型生成解释，与官方结果进行比较。
+在这一小节，我根据LIME论文中介绍的实现原理和github上的源码实现了一个自己的my_lime，并尝试使用不同的线性模型和决策树模型来作为my_lime的可解释模型。
+
+并使用my_lime对fine-tune后的BERT模型生成解释，与官方结果进行比较。
 
 
 
-#### 3.3.1 自己实现LIME
+#### 3.3.1 my_lime的实现
 
 **我实现的LIME的结构如下：**
 
@@ -589,7 +591,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
     一种使用L1范数作为惩罚项的线性回归函数，它可以使得一些系数变为0，从而实现特征选择。
 
-    但我尝试在my_lime中使用Lasso作为线性模型时，总是出现所有feature的系数均为0的情况，我尝试了使用不同的参数$\alpha$, 也没法解决问题。
+    但我尝试在my_lime中使用Lasso作为线性模型时，总是出现所有feature的系数均为0的情况，我尝试了减小正则化参数$\alpha$, 也没法解决问题。
 
   - *ElasticNet():*  
 
@@ -713,7 +715,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
 1. 两者权重排名前十的features中有三个不同，my_lime中是['to', 'fucking', 'so'], 而lime中则是['apply', 'that', 'pair'], 这些词大多都是中性词，但是my_lime多发现了一个‘fucking’，这个词可能会被BERT用作判定结果为negative的依据。
 
-2. 同一个feature在两者中的权值和排序略有区别，但是正负关系是一致的。
+2. 同一个feature在两者中的权值和排序略有区别，但是正负是一致的。
 3. my_lime 的权值大小差距相对较大些，这可能与不同线性模型的特性有关。
 
 
@@ -739,7 +741,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
   1. 两者权重排名前十的features中只有一个不同。my_lime中的“much” 和lime中的“of”
 
-  2. 同一个feature在两者中的权值和排序略有区别，但是正负关系是一致的。
+  2. 同一个feature在两者中的权值和排序略有区别，但是正负是一致的。
 
   
 
@@ -763,7 +765,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 比较发现：
 
 1. 在这个case中my_lime 的表现要优于lime，原因是它多发现了“hard”，“well”两个词，它们更有可能被BERT用作判断的依据。
-2. 其他无关词较多，应该是因为这段text中适合作为判断依据的word不到十个。
+2. 其他无关词较多，同样是因为这段text中适合作为判断依据的feature 不到十个。
 
 
 
@@ -793,7 +795,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
 - 同时，我们还可以通过决策树的决策过程来获取可解释信息：（由于决策树过大，在这里截取部分分支来说明）
 
-<img src="MSRA大模型可解释研究 结题报告_images/image-20230529215458803.png" alt="image-20230529215458803" style="zoom: 33%;" />
+<img src="MSRA大模型可解释研究 结题报告_images/image-20230531133012589.png" alt="image-20230531133012589" style="zoom: 50%;" />
 
 例如，在这个分支中，左边的分支表示True，即条件overthinking = 0成立，也即text中没有’overthinking‘这个词，反之，右边的分支则表示’overthinking‘这个词存在于text中。而节点的颜色代表预测结果，橙色越深则越可能是negative，蓝色越深则越有可能是positive。可以看到，若’overthinking‘不存在，则决策树走向左侧分支，模型的预测结果由negative转变为positive；而若’overthinking‘存在，则决策树走向右侧分支，模型预测结果为negative的可能性加大。这说明‘overthinking’ 这个词会推动模型的预测偏向negative。
 
@@ -803,11 +805,17 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
 ## 4. Insights
 
+在项目完成后，我也对BERT和LIME产生了一些insights：
+
 - **BERT 是否用到了正确的信息进行预测：**
 
   我们可以根据LIME 给出的解释中影响系数绝对值靠前的那些feature（word）来判断BERT 是否用到了正确的信息进行预测。
 
-  总结LIME 解释的三个case我们可以发现，LIME 给出的解释中系数绝对值排名前五的feature 基本都是有效信息。虽然前十个feature中会出现一些无关词，但大多数是因为我们的test case较短，其中可用于做预测的信息比较少，所以前十个feature里必然会出现其他无关词，并不能由此就说模型的可解释性差。
+  除了上面展示的三个case，我还在测试数据集中找了十条数据使用lime进行解释。分析结果后我总结发现：
+
+  - 设置num_feature 为5 时，LIME 给出的解释中基本都是有效信息，只是偶尔会混入一个无关词。说明BERT 基本上能使用正确信息进行预测。
+  - 设置num_feature为10 时，系数绝对值前十的feature中会出现一些无关词，但大多数是因为我们的test case较短，其中可用于做预测的信息比较少，故前十个feature里必然会出现其他无关词，并不能由此就说模型的可解释性差。
+  - 这也说明我们在使用lime 解释模型时，需要设置合适的num_feature 参数
 
   
 
@@ -815,7 +823,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
   我们通过LIME 给出的解释中某一个有效feature（即无关词除外）系数的正负是否和我们的直观判断相符来判断BERT 对于每个可解释特征的理解是否正确。
 
-  总结LIME 解释的三个case我们发现，BERT 没有在某个单词的影响系数的正负上出现错误。比如，BERT 不会将人类常识中倾向于negative的词用作预测结果为positive的依据，反之也不会将倾向于positive 的词用作预测结果为negative 的依据。说明BERT 能够正确学习到这些单词的情感倾向，能够正确的理解这些可解释特征。
+  总结LIME 生成的解释后可以发现，BERT 没有在某个单词的影响系数的正负上出现错误。也就是说，BERT 不会将人类常识中倾向于negative的词用作预测结果为positive的依据，反之也不会将倾向于positive 的词用作预测结果为negative 的依据。说明BERT 能够正确学习到这些单词的情感倾向，能够正确的理解这些可解释特征。
 
   
 
@@ -823,7 +831,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
   - LIME是一种模型无关的方法，可以适用于任何类型和结构的模型，包括BERT等复杂的深度学习模型，泛化性很强。
 
-  - LIME是一种局部的方法，可以针对每个样本生成个性化的局部解释，而不是一个全局的统计量。
+  - LIME是一种局部的方法，可以针对每个样本生成个性化的局部解释，而不是一个全局的统计量。（全局的解释不一定贴合某一特定样例）
 
   - LIME是一种基于采样和扰动的方法，可以在不改变原始数据和模型的情况下生成解释。
 
@@ -832,7 +840,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 - **LIME 可解释方法的不足：**
 
   - LIME需要设计合适的可解释特征和采样样本相似度度量（即权重计算），这可能与BERT 原来使用的特征不同，导致解释与真实情况不一致。
-  - LIME需要选择合适的超参数和可解释模型，这可能会解释的质量和稳定性。
+  - LIME需要选择合适的超参数和可解释模型，这可能会解释的质量和稳定性。比如将num_feature 设置得过大会导致模型的解释中混入较多的无关feature。
   - LIME的运行时需要大量的采样和扰动，这可能导致计算效率低下和资源消耗大。比如在较大数据集上运行SP-lime时便发生RAM 溢出的状况。
   - LIME只能提供局部的解释，不能反映BERT在整体上学习到了什么模式和规律。
   - LIME不能保证与原始模型在全局范围内的一致性，即对不同样本生成的解释可能存在矛盾或冲突。
@@ -847,7 +855,7 @@ sp_explainer = submodular_pick.SubmodularPick(explainer, sentences, predictor, s
 
   在使用LIME对BERT 微调后生成的分类器进行可解释分析时发现，有很多代词、连词等无关词被模型当作预测的依据，这也使模型的可解释性变差。
 
-  基于这个事实，在我们对模型进行训练或fine-tune时，或许可以对训练数据作一些task-specific 的处理，比如在情感分类任务中，我们可以人为地将原始数据中的这些无关词，如“I”，“your”，“that”等词过滤掉，不让模型基于这些无关词作出判断。这样或许可以让模型作出可解释性更好的预测。
+  基于这个事实，在我们对模型进行训练或fine-tune时，或许可以对训练数据作一些task-specific 的处理，比如在情感分类任务中，我们可以人为地将原始数据中的这些无关词，如“I”，“your”，“that”等词过滤掉，不让模型基于这些无关词作出判断。又如在图像分类任务中，可以用一些算法先像原始数据中的一些无关背景删去。这样或许可以让模型作出可解释性更好的预测。
 
 - **在LIME算法中，改进可解释特征的选择：**
 
